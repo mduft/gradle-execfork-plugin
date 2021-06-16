@@ -14,6 +14,10 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
 import java.util.concurrent.TimeUnit
+import kotlin.reflect.*
+import kotlin.reflect.full.*
+import kotlin.reflect.jvm.*
+import java.util.stream.Stream
 
 /**
  * An abstract task that will launch an executable as a background process, optionally
@@ -38,7 +42,16 @@ abstract class AbstractExecFork : DefaultTask(), ProcessForkOptions {
     private val log: Logger = LoggerFactory.getLogger(javaClass.simpleName)
 
     @Input
+    override abstract fun getEnvironment(): MutableMap<String, Any>
+
+    @InputFile
+    override abstract fun getExecutable(): String?
+
+    @Input
     var args: MutableList<CharSequence> = mutableListOf()
+
+    @Internal
+    override abstract fun getWorkingDir(): File
 
     @OutputFile
     @Optional
@@ -63,12 +76,16 @@ abstract class AbstractExecFork : DefaultTask(), ProcessForkOptions {
     @Input
     var forceKill: Boolean = false
 
-    private var process: Process? = null
+    @Input
+    var killDescendants: Boolean = true
+
+    @Internal
+    var process: Process? = null
 
     @Input
     var timeout: Long = 60
 
-    @Internal
+    @get:Internal
     var stopAfter: Task? = null
         set(value: Task?) {
             val joinTaskVal: ExecJoin? = joinTask
@@ -79,7 +96,7 @@ abstract class AbstractExecFork : DefaultTask(), ProcessForkOptions {
             field = value
         }
 
-    @Internal
+    @get:Internal
     var joinTask: ExecJoin? = null
         set(value: ExecJoin?) {
             val stopAfterVal: Task? = stopAfter
@@ -156,6 +173,18 @@ abstract class AbstractExecFork : DefaultTask(), ProcessForkOptions {
      * Stop the process that this task has spawned
      */
     fun stop() {
+        try {
+            if (killDescendants) {
+                stopDescendants()
+            }
+        } catch(e: Exception) {
+            log.warn("Failed to stop descendants", e)
+        }
+
+        stopRootProcess()
+    }
+
+    private fun stopRootProcess() {
         val process: Process = process ?: return
         if (process.isAlive && !forceKill) {
             process.toHandle().descendants().forEach { it.destroy() }
@@ -168,7 +197,35 @@ abstract class AbstractExecFork : DefaultTask(), ProcessForkOptions {
         }
     }
 
-    @Internal
+    private fun stopDescendants() {
+        val process: Process = process ?: return
+        if(!process.isAlive) {
+            return
+        }
+
+        val toHandle = process::class.memberFunctions.singleOrNull { it.name == "toHandle" }
+        if (toHandle == null) {
+            log.error("Could not load Process.toHandle(). The killDescendants flag requires Java 9+. Please set killDescendants=false, or upgrade to Java 9+.")
+            return // not supported, pre java 9?
+        }
+
+        toHandle.isAccessible = true
+        val handle = toHandle.call(process)
+        if (handle == null) {
+            log.warn("Could not get process handle. Process descendants may not be stopped.")
+            return
+        }
+        val descendants = handle::class.memberFunctions.single { it.name == "descendants" }
+        descendants.isAccessible = true
+        val children: Stream<*> = descendants.call(handle) as Stream<*>;
+        val destroy = handle::class.memberFunctions.single { it.name == if(forceKill) "destroyForcibly" else "destroy" }
+        destroy.isAccessible = true
+
+        children.forEach {
+            destroy.call(it);
+        }
+    }
+
     fun <T : Task> setStopAfter(taskProvider: TaskProvider<T>) {
         stopAfter = taskProvider.get()
     }

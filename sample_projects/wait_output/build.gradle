@@ -2,6 +2,10 @@ apply plugin: 'java'
 apply plugin: 'gradle-execfork-plugin'
 
 buildscript {
+  repositories {
+    mavenLocal()
+    mavenCentral()
+  }
   dependencies {
     classpath "com.github.psxpaul:gradle-execfork-plugin:$pluginVersion"
   }
@@ -13,7 +17,7 @@ task integrationTest(dependsOn: 'startDaemon') {
     assert content.contains('Important work being done!')
     assert content.contains('Daemon is up!')
     assert !content.contains('PING')
-    Thread.sleep(500)
+    Thread.sleep(1500)
     content = file("${buildDir}/daemon.out").text
     assert content.contains('PING')
   }

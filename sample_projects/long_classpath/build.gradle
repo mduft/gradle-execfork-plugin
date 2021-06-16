@@ -20,7 +20,13 @@ task integrationTest(dependsOn: 'startDaemon') {
 build.dependsOn integrationTest
 
 task startDaemon(type: com.github.psxpaul.task.JavaExecFork, dependsOn: 'classes') {
-  classpath = sourceSets.main.runtimeClasspath
+  // Add 2048 (non existing) paths to classpath, each more than 128 characters in length.
+  // Passing this classpath as a command-line argument exceeds command line length limits of MS Windows, Linux and macOS.
+  classpath = sourceSets.main.runtimeClasspath.plus(layout.files(
+          (0..2048).stream()
+                  .map { s -> "${'a' * 128}/${s}" }
+                  .toList()
+  ))
   main = 'com.github.psxpaul.example.Main'
   args = [ '--someArg', "$buildDir/somePath" ]
 }

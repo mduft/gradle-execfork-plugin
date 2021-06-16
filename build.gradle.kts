@@ -1,22 +1,30 @@
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 
+allprojects {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+    }
+}
+
 plugins {
-    id("com.gradle.plugin-publish").version("0.9.7")
-    id("org.jetbrains.kotlin.jvm").version("1.3.41")
+    id("com.gradle.plugin-publish").version("0.14.0")
+    id("org.jetbrains.kotlin.jvm").version("1.4.32")
     id("idea")
-    id("maven")
+    id("maven-publish")
+    id("java-gradle-plugin")
 }
 
 group = "com.github.psxpaul"
-version = File("VERSION").readText().trim()
-buildDir = File("build/gradle")
+version = File(rootDir, "VERSION").readText().trim()
 
 dependencies {
-    compile(gradleApi())
-    compile("org.jetbrains.kotlin:kotlin-stdlib:1.3.41")
+    implementation(gradleApi())
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.4.32")
+    implementation("org.jetbrains.kotlin:kotlin-reflect:1.4.32")
 
-    testCompile("junit:junit:4.12")
-    testCompile("org.hamcrest:hamcrest-all:1.3")
+    testImplementation("junit:junit:4.12")
+    testImplementation("org.hamcrest:hamcrest-all:1.3")
 }
 
 pluginBundle {
@@ -33,30 +41,17 @@ pluginBundle {
     }
 }
 
-repositories {
-    mavenLocal()
-    mavenCentral()
-}
-
 tasks {
-    val cleanSampleProjects by creating(GradleBuild::class) {
+    val sampleProjects by creating(GradleBuild::class) {
         buildFile = File("${project.rootDir}/sample_projects/build.gradle")
-        tasks = listOf("clean")
+        tasks = listOf("clean", "build")
     }
-    cleanSampleProjects.dependsOn("install")
-    "clean" { finalizedBy(cleanSampleProjects) }
-
-    val buildSampleProjects by creating(GradleBuild::class) {
-        buildFile = File("${project.rootDir}/sample_projects/build.gradle")
-        tasks = listOf("build")
-    }
-    buildSampleProjects.dependsOn("install")
-    "build" { finalizedBy(buildSampleProjects) }
+    sampleProjects.dependsOn("publishToMavenLocal")
+    "test" { finalizedBy(sampleProjects) }
     named<Test>("test") {
         testLogging.exceptionFormat = TestExceptionFormat.FULL
     }
 }
-
 
 val javadocJar by tasks.creating(Jar::class) {
     archiveClassifier.set("javadoc")
